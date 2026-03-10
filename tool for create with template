@@ -1,0 +1,186 @@
+"""
+Meeting Summary Tool
+Requirements: python-docx
+"""
+
+import logging
+import tempfile
+from typing import Literal
+
+from docx import Document
+from fastapi import UploadFile
+from pydantic import BaseModel
+
+from open_webui.models.users import Users
+from open_webui.routers.files import upload_file_handler as owui_upload_file
+
+log = logging.getLogger(__name__)
+
+TEMPLATE_PATH = "./data/resources/meeting-template.docx"
+
+
+class Tools:
+    class Valves(BaseModel):
+        open_webui_url: str = "http://localhost:8080/"
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    async def create_meeting_summary(
+        self,
+        __user__: dict,
+        meeting_subject: str,
+        meeting_date: str,
+        meeting_leader_name: str,
+        meeting_leader_title: str,
+        participants: str,
+        discussion_points: str,
+        action_items: str,
+        leader_closing: str,
+        summarizer_title: str,
+        issuing_body: str,
+    ) -> dict[str, str]:
+        """
+        Creates a formatted meeting summary Word document based on a fixed template.
+
+        Parameters:
+        - meeting_subject: נושא הדיון
+        - meeting_date: תאריך הדיון בפורמט DD/MM/YYYY
+        - meeting_leader_name: שם מוביל הדיון
+        - meeting_leader_title: תפקיד מוביל הדיון
+        - participants: משתתפי הדיון — מחלקה וכל אחד עם שם ותפקיד, מופרדים ב |
+          לדוגמה: "מחלקת טכנולוגיה — דנה כהן, מפתחת; רון לוי, ארכיטקט | מחלקת מוצר — יעל גל, מנהלת מוצר"
+          אם אין מחלקות: "דנה כהן, מפתחת; רון לוי, ארכיטקט"
+        - discussion_points: עיקרי הדיון — נקודות מופרדות בשורה חדשה, כל אחת מתחילה ב "- "
+        - action_items: משימות להמשך — בפורמט:
+          "1. תיאור משימה\nא) אחריות לביצוע: שם\nב) דד-ליין: DD/MM/YYYY"
+          משימות מרובות מופרדות בשורה ריקה
+        - leader_closing: סיכום מוביל הדיון — נקודות מופרדות בשורה חדשה, כל אחת מתחילה ב "- "
+        - summarizer_title: תפקיד מסכם הדיון
+        - issuing_body: הגוף המוציא את הסיכום (לכותרת/לוגו)
+        """
+
+        placeholders = {
+            "{{נושא_הדיון}}": meeting_subject,
+            "{{תאריך}}": meeting_date,
+            "{{מוביל_הדיון_שם}}": meeting_leader_name,
+            "{{מוביל_הדיון_תפקיד}}": meeting_leader_title,
+            "{{משתתפים}}": participants,
+            "{{עיקרי_הדיון}}": discussion_points,
+            "{{משימות}}": action_items,
+            "{{סיכום_מוביל}}": leader_closing,
+            "{{תפקיד_מסכם}}": summarizer_title,
+            "{{גוף_מוציא}}": issuing_body,
+        }
+
+        try:
+            doc = Document(TEMPLATE_PATH)
+        except Exception as e:
+            raise Exception(f"Failed to load template: {str(e)}")
+
+        # Replace placeholders in all paragraphs
+        for paragraph in doc.paragraphs:
+            for placeholder, value in placeholders.items():
+                if placeholder in paragraph.text:
+                    _replace_in_paragraph(paragraph, placeholder, value)
+
+        # Replace placeholders in tables (if any)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for placeholder, value in placeholders.items():
+                            if placeholder in paragraph.text:
+                                _replace_in_paragraph(paragraph, placeholder, value)
+
+        # Replace placeholders in headers and footers
+        for section in doc.sections:
+            for paragraph in section.header.paragraphs:
+                for placeholder, value in placeholders.items():
+                    if placeholder in paragraph.text:
+                        _replace_in_paragraph(paragraph, placeholder, value)
+            for paragraph in section.footer.paragraphs:
+                for placeholder, value in placeholders.items():
+                    if placeholder in paragraph.text:
+                        _replace_in_paragraph(paragraph, placeholder, value)
+
+        filename = f"סיכום_דיון_{meeting_subject[:30]}.docx"
+
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=True) as temp_file:
+            temp_path = temp_file.name
+            doc.save(temp_path)
+
+            user_id = __user__.get("id")
+            if user_id is None:
+                raise Exception(f"No user ID available: {__user__}")
+
+            user_obj = Users.get_user_by_id(user_id)
+            if not user_obj:
+                raise Exception(f"User not found with ID: {user_id}")
+
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            metadata = {"description": f"סיכום דיון — {meeting_subject}"}
+
+            try:
+                file_url = _upload_file(
+                    user=user_obj,
+                    filename=filename,
+                    file_path=temp_path,
+                    content_type=content_type,
+                    metadata=metadata,
+                    base_url=self.valves.open_webui_url,
+                )
+            except Exception as e:
+                log.error(f"Failed to upload meeting summary: {str(e)}")
+                raise Exception(f"Failed to upload meeting summary: {str(e)}")
+
+            return {"file_url": file_url, "filename": filename}
+
+
+def _replace_in_paragraph(paragraph, placeholder: str, value: str):
+    """
+    Replace a placeholder in a paragraph while preserving formatting.
+    Handles cases where the placeholder is split across multiple runs.
+    """
+    # First try simple run-level replacement
+    for run in paragraph.runs:
+        if placeholder in run.text:
+            run.text = run.text.replace(placeholder, value)
+            return
+
+    # If placeholder is split across runs, work at paragraph level
+    full_text = "".join(run.text for run in paragraph.runs)
+    if placeholder in full_text:
+        new_text = full_text.replace(placeholder, value)
+        # Put all text in first run, clear the rest
+        if paragraph.runs:
+            paragraph.runs[0].text = new_text
+            for run in paragraph.runs[1:]:
+                run.text = ""
+
+
+class _MockRequest:
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+        self.app = SimpleNamespace()
+        self.app.state = SimpleNamespace()
+        self.app.state.config = SimpleNamespace()
+        self.app.state.config.ALLOWED_FILE_EXTENSIONS = None
+        self.app.state.config.STT_SUPPORTED_CONTENT_TYPES = None
+        self.app.state.config.CONTENT_EXTRACTION_ENGINE = None
+
+
+def _upload_file(user, filename, file_path, content_type, metadata, base_url):
+    with open(file_path, "rb") as file_content:
+        upload_file_obj = UploadFile(filename=filename, file=file_content)
+        upload_file_obj.headers = {"content-type": content_type}
+        request_obj = _MockRequest()
+        file_response = owui_upload_file(
+            request=request_obj,
+            file=upload_file_obj,
+            metadata=metadata,
+            process=False,
+            user=user,
+        )
+    file_id = file_response.id
+    return f"{base_url.strip('/')}/api/v1/files/{file_id}/content"
