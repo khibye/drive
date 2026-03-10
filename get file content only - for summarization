@@ -1,0 +1,21 @@
+
+
+class Filter:    def __init__(self):
+        self.file_handler = True  
+
+    def inlet(self, body: dict, __user__: Optional[dict] = None) -> dict:
+        files = body.get("metadata", {}).get("files", [])
+
+        if not files:
+            return body
+
+        tika_content = files[0].get("file", {}).get("data", {}).get("content", "")
+
+        if tika_content:
+
+
+            if body["messages"] and body["messages"][0].get("role") == "system":
+                body["messages"][0]["content"] += f"\n\n---\nתמלול הפגישה:\n{tika_content}"
+
+        body["metadata"]["files"] = []
+        return body
