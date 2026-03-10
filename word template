@@ -15,8 +15,14 @@ Open פורמט.docx and replace the dynamic content with the following Jinja2 s
 ---
 
 ## Section ב — Participants
-{% for p in participants %}{% if p.department %}{{ p.department }} — {% endif %}{{ p.name }}, {{ p.title }}{% if not loop.last %} | {% endif %}{% endfor %}
-
+{%- if participants_by_dept %}
+  {%- for dept, members in participants_by_dept.items() %}
+**{{ dept }}** — {% for m in members %}{{ m.name }}, {{ m.title }}{% if not loop.last %}; {% endif %}{% endfor %}{% if not loop.last %} | {% endif %}
+  {%- endfor %}
+{%- endif %}
+{%- if participants_no_dept %}
+{% for m in participants_no_dept %}{{ m.name }}, {{ m.title }}{% if not loop.last %}; {% endif %}{% endfor %}
+{%- endif %}
 ---
 
 ## Section ג — Summarizer
