@@ -1,0 +1,58 @@
+# Template Guide — meeting-template.docx
+
+Open פורמט.docx and replace the dynamic content with the following Jinja2 syntax:
+
+---
+
+## Title line
+{{ meeting_subject }}
+
+---
+
+## Section א
+בתאריך {{ meeting_date }} התקיים דיון בנושא {{ meeting_subject }} בהובלת {{ leader_name }}, {{ leader_title }}.
+
+---
+
+## Section ב — Participants
+{% for p in participants %}{% if p.department %}{{ p.department }} — {% endif %}{{ p.name }}, {{ p.title }}{% if not loop.last %} | {% endif %}{% endfor %}
+
+---
+
+## Section ג — Summarizer
+הח"מ
+
+---
+
+## Section ד — Discussion Points
+{% for point in discussion_points %}
+- {{ point }}
+{% endfor %}
+
+---
+
+## Section ה — Action Items
+{% for item in action_items %}
+{{ loop.index }}. {{ item.task }}
+   א) אחריות לביצוע: {{ item.owner }}
+   ב) דד-ליין: {{ item.deadline }}
+{% endfor %}
+
+---
+
+## Section ו — Leader Closing
+{% for point in leader_closing %}
+- {{ point }}
+{% endfor %}
+
+---
+
+## Section ז — Closing
+בברכה,
+הח"מ
+{{ summarizer_title }}
+
+---
+
+## Header / Logo
+{{ issuing_body }}
