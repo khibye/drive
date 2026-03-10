@@ -1,13 +1,12 @@
 """
 Meeting Summary Tool
-Requirements: python-docx
+Requirements: docxtpl
 """
 
 import logging
 import tempfile
-from typing import Literal
 
-from docx import Document
+from docxtpl import DocxTemplate
 from fastapi import UploadFile
 from pydantic import BaseModel
 
@@ -33,76 +32,68 @@ class Tools:
         meeting_date: str,
         meeting_leader_name: str,
         meeting_leader_title: str,
-        participants: str,
-        discussion_points: str,
-        action_items: str,
-        leader_closing: str,
+        participants: list[dict],
+        discussion_points: list[str],
+        action_items: list[dict],
+        leader_closing: list[str],
         summarizer_title: str,
         issuing_body: str,
     ) -> dict[str, str]:
         """
-        Creates a formatted meeting summary Word document based on a fixed template.
+        Creates a formatted meeting summary Word document using a Jinja2-powered docx template.
 
         Parameters:
         - meeting_subject: נושא הדיון
         - meeting_date: תאריך הדיון בפורמט DD/MM/YYYY
         - meeting_leader_name: שם מוביל הדיון
         - meeting_leader_title: תפקיד מוביל הדיון
-        - participants: משתתפי הדיון — מחלקה וכל אחד עם שם ותפקיד, מופרדים ב |
-          לדוגמה: "מחלקת טכנולוגיה — דנה כהן, מפתחת; רון לוי, ארכיטקט | מחלקת מוצר — יעל גל, מנהלת מוצר"
-          אם אין מחלקות: "דנה כהן, מפתחת; רון לוי, ארכיטקט"
-        - discussion_points: עיקרי הדיון — נקודות מופרדות בשורה חדשה, כל אחת מתחילה ב "- "
-        - action_items: משימות להמשך — בפורמט:
-          "1. תיאור משימה\nא) אחריות לביצוע: שם\nב) דד-ליין: DD/MM/YYYY"
-          משימות מרובות מופרדות בשורה ריקה
-        - leader_closing: סיכום מוביל הדיון — נקודות מופרדות בשורה חדשה, כל אחת מתחילה ב "- "
+        - participants: רשימת משתתפים. כל אחד הוא dict עם מפתחות:
+            - "department": שם המחלקה (או "" אם לא צוינה)
+            - "name": שם המשתתף
+            - "title": תפקיד המשתתף (או "[תפקיד לא צוין]" אם לא ידוע)
+          לדוגמה:
+          [
+            {"department": "מחלקת טכנולוגיה", "name": "דנה כהן", "title": "מפתחת"},
+            {"department": "מחלקת טכנולוגיה", "name": "רון לוי", "title": "ארכיטקט"},
+            {"department": "מחלקת מוצר", "name": "יעל גל", "title": "מנהלת מוצר"}
+          ]
+        - discussion_points: רשימת נקודות לסעיף עיקרי הדיון.
+          כל פריט הוא string אחד.
+          לדוגמה: ["במסגרת הדיון הוצגה...", "עלה כי יש צורך..."]
+        - action_items: רשימת משימות להמשך. כל אחת היא dict עם מפתחות:
+            - "task": תיאור המשימה
+            - "owner": האחראי (או "לא הוגדר")
+            - "deadline": הדדליין (או "לא הוגדר")
+          לדוגמה:
+          [
+            {"task": "בדיקת פריסת מודל", "owner": "מיכל", "deadline": "היום"},
+            {"task": "הכנת system prompt", "owner": "חני", "deadline": "מחר"}
+          ]
+        - leader_closing: רשימת נקודות לסעיף סיכום מוביל הדיון.
+          כל פריט הוא string אחד.
+          לדוגמה: ["מוביל הדיון ציין כי...", "נדרש לבדוק..."]
         - summarizer_title: תפקיד מסכם הדיון
-        - issuing_body: הגוף המוציא את הסיכום (לכותרת/לוגו)
+        - issuing_body: הגוף המוציא את הסיכום
         """
 
-        placeholders = {
-            "{{נושא_הדיון}}": meeting_subject,
-            "{{תאריך}}": meeting_date,
-            "{{מוביל_הדיון_שם}}": meeting_leader_name,
-            "{{מוביל_הדיון_תפקיד}}": meeting_leader_title,
-            "{{משתתפים}}": participants,
-            "{{עיקרי_הדיון}}": discussion_points,
-            "{{משימות}}": action_items,
-            "{{סיכום_מוביל}}": leader_closing,
-            "{{תפקיד_מסכם}}": summarizer_title,
-            "{{גוף_מוציא}}": issuing_body,
+        context = {
+            "meeting_subject": meeting_subject,
+            "meeting_date": meeting_date,
+            "leader_name": meeting_leader_name,
+            "leader_title": meeting_leader_title,
+            "participants": participants,
+            "discussion_points": discussion_points,
+            "action_items": action_items,
+            "leader_closing": leader_closing,
+            "summarizer_title": summarizer_title,
+            "issuing_body": issuing_body,
         }
 
         try:
-            doc = Document(TEMPLATE_PATH)
+            doc = DocxTemplate(TEMPLATE_PATH)
+            doc.render(context)
         except Exception as e:
-            raise Exception(f"Failed to load template: {str(e)}")
-
-        # Replace placeholders in all paragraphs
-        for paragraph in doc.paragraphs:
-            for placeholder, value in placeholders.items():
-                if placeholder in paragraph.text:
-                    _replace_in_paragraph(paragraph, placeholder, value)
-
-        # Replace placeholders in tables (if any)
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for placeholder, value in placeholders.items():
-                            if placeholder in paragraph.text:
-                                _replace_in_paragraph(paragraph, placeholder, value)
-
-        # Replace placeholders in headers and footers
-        for section in doc.sections:
-            for paragraph in section.header.paragraphs:
-                for placeholder, value in placeholders.items():
-                    if placeholder in paragraph.text:
-                        _replace_in_paragraph(paragraph, placeholder, value)
-            for paragraph in section.footer.paragraphs:
-                for placeholder, value in placeholders.items():
-                    if placeholder in paragraph.text:
-                        _replace_in_paragraph(paragraph, placeholder, value)
+            raise Exception(f"Failed to render template: {str(e)}")
 
         filename = f"סיכום_דיון_{meeting_subject[:30]}.docx"
 
@@ -135,28 +126,6 @@ class Tools:
                 raise Exception(f"Failed to upload meeting summary: {str(e)}")
 
             return {"file_url": file_url, "filename": filename}
-
-
-def _replace_in_paragraph(paragraph, placeholder: str, value: str):
-    """
-    Replace a placeholder in a paragraph while preserving formatting.
-    Handles cases where the placeholder is split across multiple runs.
-    """
-    # First try simple run-level replacement
-    for run in paragraph.runs:
-        if placeholder in run.text:
-            run.text = run.text.replace(placeholder, value)
-            return
-
-    # If placeholder is split across runs, work at paragraph level
-    full_text = "".join(run.text for run in paragraph.runs)
-    if placeholder in full_text:
-        new_text = full_text.replace(placeholder, value)
-        # Put all text in first run, clear the rest
-        if paragraph.runs:
-            paragraph.runs[0].text = new_text
-            for run in paragraph.runs[1:]:
-                run.text = ""
 
 
 class _MockRequest:
