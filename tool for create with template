@@ -4,6 +4,7 @@ Requirements: docxtpl, boto3
 """
 
 import logging
+import os
 import tempfile
 
 from docxtpl import DocxTemplate
@@ -21,37 +22,30 @@ TEMPLATE_PATH = "./data/resources/meeting-template.docx"
 class Tools:
     class Valves(BaseModel):
         open_webui_url: str = "http://localhost:8080/"
-        template_s3_url: str = ""
-        aws_access_key_id: str = ""
-        aws_secret_access_key: str = ""
-        aws_region: str = "us-east-1"
 
     def __init__(self):
         self.valves = self.Valves()
 
     def _get_template_path(self) -> tuple[str, bool]:
-        if self.valves.template_s3_url:
+        s3_endpoint_url = os.environ.get("S3_ENDPOINT_URL")
+        s3_bucket_name = os.environ.get("S3_BUCKET_NAME")
+
+        if s3_endpoint_url and s3_bucket_name:
             import boto3
-            from urllib.parse import urlparse
 
-            parsed = urlparse(self.valves.template_s3_url)
-            if parsed.scheme != "s3":
-                raise ValueError(f"Unsupported S3 URL format: '{self.valves.template_s3_url}'. Use s3://bucket/key")
-
-            bucket = parsed.netloc
-            key = parsed.path.lstrip("/")
+            key = TEMPLATE_PATH.lstrip("/")
 
             session_kwargs = {}
-            if self.valves.aws_access_key_id and self.valves.aws_secret_access_key:
-                session_kwargs["aws_access_key_id"] = self.valves.aws_access_key_id
-                session_kwargs["aws_secret_access_key"] = self.valves.aws_secret_access_key
-            if self.valves.aws_region:
-                session_kwargs["region_name"] = self.valves.aws_region
+            aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+            aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+            if aws_access_key_id and aws_secret_access_key:
+                session_kwargs["aws_access_key_id"] = aws_access_key_id
+                session_kwargs["aws_secret_access_key"] = aws_secret_access_key
 
-            s3_client = boto3.Session(**session_kwargs).client("s3")
+            s3_client = boto3.Session(**session_kwargs).client("s3", endpoint_url=s3_endpoint_url)
             tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
             try:
-                s3_client.download_fileobj(bucket, key, tmp)
+                s3_client.download_fileobj(s3_bucket_name, key, tmp)
                 tmp.flush()
                 return tmp.name, True
             except Exception as e:
@@ -65,6 +59,7 @@ class Tools:
         self,
         __user__: dict,
         meeting_subject: str,
+        meeting_goal: str,
         meeting_date: str,
         meeting_leader_name: str,
         meeting_leader_title: str,
@@ -82,6 +77,10 @@ class Tools:
         Parameters — provide exactly as described:
 
         meeting_subject: The meeting topic. Example: "פיתוח מערכת סיכום אוטומטי"
+
+        meeting_goal: The purpose or objective of the meeting, inferred from the transcript.
+        What the participants aimed to achieve, decide, or align on.
+        Example: "קבלת החלטות על בחירת מודל והגדרת משימות לשבוע הקרוב"
 
         meeting_date: Date in DD/MM/YYYY format. Example: "15/03/2024"
 
@@ -179,6 +178,7 @@ class Tools:
 
         context = {
             "meeting_subject": meeting_subject,
+            "meeting_goal": meeting_goal,
             "meeting_date": meeting_date,
             "leader_name": meeting_leader_name,
             "leader_title": meeting_leader_title,
@@ -200,7 +200,6 @@ class Tools:
             raise Exception(f"Failed to render template: {str(e)}")
         finally:
             if is_temp:
-                import os
                 try:
                     os.unlink(template_path)
                 except OSError:
