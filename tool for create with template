@@ -1,6 +1,6 @@
 """
 Meeting Summary Tool
-Requirements: docxtpl
+Requirements: docxtpl, boto3
 """
 
 import logging
@@ -21,9 +21,45 @@ TEMPLATE_PATH = "./data/resources/meeting-template.docx"
 class Tools:
     class Valves(BaseModel):
         open_webui_url: str = "http://localhost:8080/"
+        template_s3_url: str = ""
+        aws_access_key_id: str = ""
+        aws_secret_access_key: str = ""
+        aws_region: str = "us-east-1"
 
     def __init__(self):
         self.valves = self.Valves()
+
+    def _get_template_path(self) -> tuple[str, bool]:
+        if self.valves.template_s3_url:
+            import boto3
+            from urllib.parse import urlparse
+
+            parsed = urlparse(self.valves.template_s3_url)
+            if parsed.scheme != "s3":
+                raise ValueError(f"Unsupported S3 URL format: '{self.valves.template_s3_url}'. Use s3://bucket/key")
+
+            bucket = parsed.netloc
+            key = parsed.path.lstrip("/")
+
+            session_kwargs = {}
+            if self.valves.aws_access_key_id and self.valves.aws_secret_access_key:
+                session_kwargs["aws_access_key_id"] = self.valves.aws_access_key_id
+                session_kwargs["aws_secret_access_key"] = self.valves.aws_secret_access_key
+            if self.valves.aws_region:
+                session_kwargs["region_name"] = self.valves.aws_region
+
+            s3_client = boto3.Session(**session_kwargs).client("s3")
+            tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+            try:
+                s3_client.download_fileobj(bucket, key, tmp)
+                tmp.flush()
+                return tmp.name, True
+            except Exception as e:
+                raise Exception(f"Failed to download template from S3: {e}")
+            finally:
+                tmp.close()
+
+        return TEMPLATE_PATH, False
 
     async def create_meeting_summary(
         self,
@@ -156,11 +192,19 @@ class Tools:
             "issuing_body": issuing_body,
         }
 
+        template_path, is_temp = self._get_template_path()
         try:
-            doc = DocxTemplate(TEMPLATE_PATH)
+            doc = DocxTemplate(template_path)
             doc.render(context)
         except Exception as e:
             raise Exception(f"Failed to render template: {str(e)}")
+        finally:
+            if is_temp:
+                import os
+                try:
+                    os.unlink(template_path)
+                except OSError:
+                    pass
 
         filename = f"סיכום_דיון_{meeting_subject[:30]}.docx"
 
