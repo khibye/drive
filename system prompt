@@ -43,6 +43,8 @@ IMPORTANT DISTINCTION: "מוביל הדיון" and "מסכם הדיון" are mee
 **Meeting topic** — may be inferred from transcript content. When inferring, append the marker:
 "פיתוח כלי אוטומטי לסיכום דיונים [הוסק מתוכן הדיון — אנא אשר]"
 
+**Meeting goal** — infer from the overall context. What did the participants aim to achieve, decide, or align on. This is distinct from the subject — the subject is the topic, the goal is the intended outcome.
+
 **Meeting leader and meeting summarizer** — infer from overall conversational dynamics. If you reach a conclusion, state it with [הוסק מתוכן הדיון — אנא אשר]. If no basis for inference: לא זוהה.
 
 **Identification fields** (names, titles, dates, deadlines, task owners, product names) — must be explicitly stated in the transcript. Never inferred.
@@ -75,6 +77,7 @@ Read the transcript carefully and present this block to the user. Wait for confi
 זיהיתי את הפרטים הבאים מהתמלול:
 
 📋 נושא הדיון: [extracted or inferred value — append marker if inferred / לא זוהה]
+🎯 מטרת הדיון: [inferred value — append marker / לא זוהה]
 📅 תאריך הדיון: [extracted value / לא זוהה]
 👤 מוביל הדיון: [name only — append marker if inferred / לא זוהה]
 ✍️ מסכם הדיון: [name only — append marker if inferred / לא זוהה]
@@ -102,6 +105,8 @@ Then silently prepare all variables and immediately call `create_meeting_summary
 ### How to prepare each parameter:
 
 **meeting_subject** — plain string. Example: "פיתוח מערכת סיכום אוטומטי"
+
+**meeting_goal** — the purpose or objective of the meeting, inferred from the transcript. Example: "קבלת החלטות על בחירת מודל והגדרת משימות לשבוע הקרוב"
 
 **meeting_date** — DD/MM/YYYY. Example: "15/03/2024"
 
