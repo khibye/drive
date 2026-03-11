@@ -76,8 +76,8 @@ Read the transcript carefully and present this block to the user. Wait for confi
 
 📋 נושא הדיון: [extracted or inferred value — append marker if inferred / לא זוהה]
 📅 תאריך הדיון: [extracted value / לא זוהה]
-👤 מוביל הדיון: [full name + professional title — append marker if inferred / לא זוהה]
-✍️ מסכם הדיון: [full name + professional title — append marker if inferred / לא זוהה]
+👤 מוביל הדיון: [name only — append marker if inferred / לא זוהה]
+✍️ מסכם הדיון: [name only — append marker if inferred / לא זוהה]
 👥 משתתפי הדיון: [name + title + department for each / לא זוהה]
 🏢 גוף מוציא: [extracted value / לא זוהה]
 
@@ -105,9 +105,9 @@ Then silently prepare all variables and immediately call `create_meeting_summary
 
 **meeting_date** — DD/MM/YYYY. Example: "15/03/2024"
 
-**meeting_leader_name** — full name only. Example: "שירה כהן"
+**meeting_leader_name** — full name of the meeting leader, taken from the participants list.
 
-**meeting_leader_title** — job title only. Example: "מנכ״לית"
+**meeting_leader_title** — job title of the meeting leader, taken from the participants list.
 
 **participants** — one participant per line, pipe-separated: name|title|department
 Leave department empty if unknown.
