@@ -22,3 +22,10 @@ context = {
 
 doc.render(context)
 doc.save("output.docx")
+
+
+{%p for action in actions %}
+{{ action.number }}
+{{ action.owner }}
+{{ action.deadline }}
+{%p endfor %}
