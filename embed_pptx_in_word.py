@@ -191,31 +191,36 @@ def embed_pptx_in_word(
         # ------------------------------------------------------------------ #
         # 5. Find and replace all placeholder paragraphs                      #
         # ------------------------------------------------------------------ #
-        replacements = 0
 
+        replacements = 0
+        
         for sec_idx in range(doc.Sections.Count):
             section = doc.Sections.get_Item(sec_idx)
             for para_idx in range(section.Paragraphs.Count):
                 para = section.Paragraphs.get_Item(para_idx)
-
-                # Check whether this paragraph's full text matches the placeholder
-                if para.Text.strip() == placeholder:
-                    # Clear existing runs / text in the paragraph
-                    para.ChildObjects.Clear()
-
-                    # Build icon image object
-                    picture = DocPicture(doc)
-                    picture.LoadImage(icon_path)
-                    picture.Width  = icon_width
-                    picture.Height = icon_height
-
-                    # Embed the PPTX as an OLE object
-                    para.AppendOleObject(
-                        pptx_path,
-                        picture,
-                        OleObjectType.PowerPointPresentation,
-                    )
-                    replacements += 1
+        
+                if placeholder not in para.Text:
+                    continue
+        
+                # Walk through child objects and remove only the placeholder text run
+                children = para.ChildObjects
+                for i in range(children.Count - 1, -1, -1):
+                    child = children.get_Item(i)
+                    child_text = getattr(child, 'Text', '')
+                    if placeholder in child_text:
+                        # Replace this child with OLE object
+                        children.RemoveAt(i)
+                        picture = DocPicture(doc)
+                        picture.LoadImage(icon_path)
+                        picture.Width  = icon_width
+                        picture.Height = icon_height
+                        para.AppendOleObject(
+                            pptx_path,
+                            picture,
+                            OleObjectType.PowerPointPresentation,
+                        )
+                        replacements += 1
+                        break
 
         if replacements == 0:
             raise ValueError(
