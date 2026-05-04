@@ -1,0 +1,11 @@
+pip install \
+  --find-links http://pypi-source:8080/ \
+  --no-index \
+  -r requirements.txt
+
+
+command: ["/bin/bash", "-c"]
+args:
+  - |
+    pip wheel --wheel-dir=/tmp/wheels $(pip freeze) && \
+    python -m http.server 8080 --directory /tmp/wheels
